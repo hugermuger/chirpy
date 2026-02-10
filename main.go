@@ -16,6 +16,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	dbQueries      *database.Queries
 	platform       string
+	secret         string
 }
 
 func main() {
@@ -37,6 +38,7 @@ func main() {
 
 	cfg.dbQueries = database.New(db)
 	cfg.platform = os.Getenv("PLATFORM")
+	cfg.secret = os.Getenv("SECRET")
 
 	mux := http.NewServeMux()
 
@@ -45,9 +47,12 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", cfg.metricsRead)
 	mux.HandleFunc("POST /admin/reset", cfg.metricsReset)
 	mux.HandleFunc("POST /api/chirps", cfg.addChirp)
-	mux.HandleFunc("POST /api/users", cfg.addUser)
 	mux.HandleFunc("GET /api/chirps", cfg.getChirps)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", cfg.getChirp)
+	mux.HandleFunc("POST /api/users", cfg.addUser)
+	mux.HandleFunc("POST /api/login", cfg.loginUser)
+	mux.HandleFunc("POST /api/refresh", cfg.refreshToken)
+	mux.HandleFunc("POST /api/revoke", cfg.revokeToken)
 
 	server := http.Server{
 		Addr:    ":" + port,

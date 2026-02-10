@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hugermuger/chirpy/internal/auth"
 	"github.com/hugermuger/chirpy/internal/database"
 )
 
@@ -19,17 +21,29 @@ type Chirp struct {
 
 func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 	type setChirp struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
+	}
+
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get Bearer Token", err)
+		return
+	}
+
+	testID, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate Token", err)
+		return
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	chirpIn := setChirp{}
-	err := decoder.Decode(&chirpIn)
+	err = decoder.Decode(&chirpIn)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
 		return
 	}
+
 	if len(chirpIn.Body) > 140 {
 		respondWithError(w, http.StatusBadRequest, "Chirp is too long", nil)
 		return
@@ -39,12 +53,12 @@ func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 
 	params := database.CreateChirpParams{
 		Body:   chirpIn.Body,
-		UserID: chirpIn.UserID,
+		UserID: testID,
 	}
 
 	chirp, err := cfg.dbQueries.CreateChirp(r.Context(), params)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't set user in database", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't set chirp in database", err)
 		return
 	}
 
@@ -90,4 +104,19 @@ func jsonChirp(chirp database.Chirp) Chirp {
 		Body:      chirp.Body,
 		UserID:    chirp.UserID,
 	}
+}
+
+func profaneFilter(s string) string {
+	words := strings.Split(s, " ")
+	expWords := []string{}
+	for _, word := range words {
+		if strings.ToLower(word) == "kerfuffle" ||
+			strings.ToLower(word) == "sharbert" ||
+			strings.ToLower(word) == "fornax" {
+			word = "****"
+		}
+		expWords = append(expWords, word)
+	}
+
+	return strings.Join(expWords, " ")
 }
