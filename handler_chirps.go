@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -68,13 +69,31 @@ func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
-	chirps, err := cfg.dbQueries.GetChirps(r.Context())
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps", err)
-		return
+	s := r.URL.Query().Get("author_id")
+	sort := r.URL.Query().Get("sort")
+	chirps := []database.Chirp{}
+
+	if s != "" {
+		chirp, err := cfg.dbQueries.GetChirpsByUserID(r.Context(), uuid.MustParse(s))
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps", err)
+			return
+		}
+		chirps = chirp
+	} else {
+		chirp, err := cfg.dbQueries.GetChirps(r.Context())
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps", err)
+			return
+		}
+		chirps = chirp
 	}
 
 	jsonChirps := []Chirp{}
+
+	if sort == "desc" {
+		slices.SortFunc(chirps, func(a, b database.Chirp) int { return b.CreatedAt.Compare(a.CreatedAt) })
+	}
 
 	for _, chirp := range chirps {
 		jsonChirps = append(jsonChirps, jsonChirp(chirp))
