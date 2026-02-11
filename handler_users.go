@@ -17,6 +17,7 @@ type User struct {
 	Email        string    `json:"email"`
 	Token        string    `json:"token"`
 	RefreshToken string    `json:"refresh_token"`
+	IsChirpyRed  bool      `json:"is_chirpy_red"`
 }
 
 type setUser struct {
@@ -148,12 +149,59 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, jsonUser)
 }
 
+func (cfg *apiConfig) setUserRed(w http.ResponseWriter, r *http.Request) {
+	type Polka struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID string `json:"user_id"`
+		} `json:"data"`
+	}
+
+	polka := Polka{}
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&polka)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
+		return
+	}
+
+	if polka.Event != "user.upgraded" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "No ApiKey", err)
+		return
+	}
+
+	if apiKey != cfg.polkaKey {
+		respondWithError(w, http.StatusUnauthorized, "Wrong ApiKey", err)
+		return
+	}
+
+	params := database.SetUserRedParams{
+		IsChirpyRed: true,
+		ID:          uuid.MustParse(polka.Data.UserID),
+	}
+
+	err = cfg.dbQueries.SetUserRed(r.Context(), params)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "Couldn't find user", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func jsonUser(user database.User) User {
 	return User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		Token:     "",
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		Token:       "",
+		IsChirpyRed: user.IsChirpyRed,
 	}
 }
