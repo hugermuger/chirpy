@@ -104,6 +104,50 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, jsonUser)
 }
 
+func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Missing Token", err)
+		return
+	}
+
+	UserID, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate Token", err)
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	inputuser := setUser{}
+	err = decoder.Decode(&inputuser)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
+		return
+	}
+
+	password, err := auth.HashPassword(inputuser.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't hash password", err)
+		return
+	}
+
+	params := database.UpdateUserParams{
+		ID:             UserID,
+		Email:          inputuser.Email,
+		HashedPassword: password,
+	}
+
+	user, err := cfg.dbQueries.UpdateUser(r.Context(), params)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't update user", err)
+		return
+	}
+
+	jsonUser := jsonUser(user)
+
+	respondWithJSON(w, http.StatusOK, jsonUser)
+}
+
 func jsonUser(user database.User) User {
 	return User{
 		ID:        user.ID,
